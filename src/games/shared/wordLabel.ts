@@ -10,12 +10,13 @@ export function wordLabel(
     scene: Phaser.Scene,
     x: number,
     y: number,
-    text: string
+    text: string,
+    options?: { color?: string }
 ): WordLabelHandle {
     const domElement = scene.add.dom(x, y).setOrigin(0.5, 0.5);
     const div = document.createElement('div');
     div.style.cssText = `
-        color: #fff;
+        color: ${options?.color ?? '#ffffff'};
         font-size: 24px;
         font-weight: bold;
         text-align: center;

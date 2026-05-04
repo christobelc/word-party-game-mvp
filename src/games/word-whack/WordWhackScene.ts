@@ -37,12 +37,19 @@ export class WordWhackScene extends Phaser.Scene {
     }
 
     preload(): void {
-        // Assets are pre-loaded by PhaserGame component, but we register the key
-        // The actual image is a brown circle representing a mole
-        const graphics = this.make.graphics({ x: 0, y: 0 });
-        graphics.fillStyle(tuning.moleColor, 1);
-        graphics.fillCircle(tuning.holeRadius, tuning.holeRadius, tuning.holeRadius);
-        graphics.generateTexture('mole', tuning.holeRadius * 2, tuning.holeRadius * 2);
+        this.load.image('whack-bg', 'assets/background.png');
+        this.load.spritesheet('worm-pop', 'assets/worm-pop-up-and-wait.png', {
+            frameWidth: tuning.wormPopFrameWidth,
+            frameHeight: tuning.wormPopFrameHeight,
+        });
+        this.load.spritesheet('worm-whacked', 'assets/worm-whacked.png', {
+            frameWidth: tuning.wormReactionFrameWidth,
+            frameHeight: tuning.wormReactionFrameHeight,
+        });
+        this.load.spritesheet('worm-missed', 'assets/worm-missed.png', {
+            frameWidth: tuning.wormReactionFrameWidth,
+            frameHeight: tuning.wormReactionFrameHeight,
+        });
     }
 
     create(): void {
@@ -52,13 +59,17 @@ export class WordWhackScene extends Phaser.Scene {
         // Subscribe to session end
         this.context.session.addEventListener('end', () => this.onEnd());
 
+        this.add.image(tuning.canvasWidth / 2, tuning.canvasHeight / 2, 'whack-bg')
+            .setDisplaySize(tuning.canvasWidth, tuning.canvasHeight);
+
         // English prompt at top center
         this.promptText = this.add.text(
             tuning.canvasWidth / 2,
             tuning.promptYPx,
             '',
             { fontFamily: 'Arial', fontSize: `${tuning.promptFontPx}px`, color: '#ffffff', align: 'center' }
-        ).setOrigin(0.5, 0.5);
+        ).setOrigin(0.5, 0.5)
+        .setDepth(10);
 
         this.timerText = this.add.text(
             tuning.canvasWidth * (1 - tuning.timerXFracFromRight),
@@ -70,7 +81,8 @@ export class WordWhackScene extends Phaser.Scene {
                 color: tuning.timerColor,
                 fontStyle: 'bold',
             }
-        ).setOrigin(1, 0.5);
+        ).setOrigin(1, 0.5)
+        .setDepth(10);
 
         this.updateTimerText();
         this.timerUpdater = this.time.addEvent({
@@ -82,11 +94,29 @@ export class WordWhackScene extends Phaser.Scene {
         // Build hole positions
         this.holes = this.buildHolePositions();
 
-        // Draw holes as dark ellipses
-        this.holes.forEach((pos) => {
-            const graphics = this.add.graphics();
-            graphics.fillStyle(tuning.holeColor, 1);
-            graphics.fillEllipse(pos.x, pos.y, tuning.holeRadius * 2, tuning.holeRadius);
+        this.anims.create({
+            key: 'worm-rise',
+            frames: this.anims.generateFrameNumbers('worm-pop', { start: 0, end: 3 }),
+            frameRate: tuning.wormRiseFrameRate,
+            repeat: 0,
+        });
+        this.anims.create({
+            key: 'worm-idle',
+            frames: this.anims.generateFrameNumbers('worm-pop', { start: 4, end: 7 }),
+            frameRate: tuning.wormIdleFrameRate,
+            repeat: -1,
+        });
+        this.anims.create({
+            key: 'worm-whacked',
+            frames: this.anims.generateFrameNumbers('worm-whacked', { start: 0, end: 3 }),
+            frameRate: tuning.wormWhackedFrameRate,
+            repeat: 0,
+        });
+        this.anims.create({
+            key: 'worm-missed',
+            frames: this.anims.generateFrameNumbers('worm-missed', { start: 0, end: 3 }),
+            frameRate: tuning.wormMissedFrameRate,
+            repeat: 0,
         });
 
         // Start first round
@@ -95,8 +125,8 @@ export class WordWhackScene extends Phaser.Scene {
         // Cleanup on shutdown
         this.events.once('shutdown', () => {
             this.activeMoles.forEach((m) => {
-                m.label.destroy();
-                m.sprite.destroy();
+                if (!m.retreating) m.label.destroy(); // retreating moles already had label destroyed
+                if (m.sprite.active) m.sprite.destroy();
             });
             this.activeMoles = [];
             this.waveTimers.forEach((t) => t.remove(false));
@@ -217,10 +247,28 @@ export class WordWhackScene extends Phaser.Scene {
         });
     }
 
-    private spawnMole(hole: { x: number; y: number }, holeIndex: number, word: WordPair, isCorrect: boolean): void {
-        const sprite = this.add.sprite(hole.x, hole.y + tuning.holeRadius, 'mole');
+    private spawnMole(
+        hole: { x: number; y: number },
+        holeIndex: number,
+        word: WordPair,
+        isCorrect: boolean
+    ): void {
+        const startY = hole.y + tuning.wormSpawnOffsetY;
+        const sprite = this.add.sprite(hole.x, startY, 'worm-pop');
+        sprite.setScale(tuning.wormPopScale);
         sprite.setInteractive();
-        const label = wordLabel(this, hole.x, hole.y + tuning.holeRadius, word.answer);
+        sprite.play('worm-rise');
+        sprite.once('animationcomplete-worm-rise', () => {
+            if (sprite.active) sprite.play('worm-idle');
+        });
+
+        const label = wordLabel(
+            this,
+            hole.x,
+            startY + tuning.wormLabelOffsetY,
+            word.answer,
+            { color: tuning.wormLabelColor }
+        );
 
         const moleData: MoleData = {
             sprite,
@@ -234,14 +282,13 @@ export class WordWhackScene extends Phaser.Scene {
 
         sprite.on('pointerdown', () => this.onMoleClick(moleData));
 
-        // Rise tween
-        const targetY = hole.y - (tuning.holeRadius - 5);
+        const targetY = hole.y + tuning.wormRiseTargetOffsetY;
         this.tweens.add({
             targets: sprite,
             y: targetY,
             duration: tuning.moleRiseDurationMs,
             ease: 'Power2',
-            onUpdate: () => label.setPosition(sprite.x, sprite.y),
+            onUpdate: () => label.setPosition(sprite.x, sprite.y + tuning.wormLabelOffsetY),
             onComplete: () => {
                 this.time.delayedCall(tuning.moleVisibleMs, () => {
                     if (!moleData.retreating) {
@@ -256,9 +303,18 @@ export class WordWhackScene extends Phaser.Scene {
         if (mole.retreating || !this.roundActive) return;
 
         if (mole.isCorrect) {
+            mole.retreating = true; // must be set BEFORE endRound() calls retreatAllActive()
             this.context.session.recordCorrect(mole.wordId);
-            feedbackTweens.squashStretch(this, mole.sprite);
             this.spawnFloatingText(mole.sprite.x, mole.sprite.y, '+1');
+            mole.label.destroy();
+            mole.sprite.setScale(tuning.wormReactionScale);
+            mole.sprite.play('worm-whacked');
+            mole.sprite.once('animationcomplete-worm-whacked', () => {
+                if (mole.sprite.active) {
+                    mole.sprite.destroy();
+                    this.activeMoles = this.activeMoles.filter((m) => m !== mole);
+                }
+            });
             this.endRound();
         } else {
             this.context.session.recordWrong(mole.wordId);
@@ -270,18 +326,14 @@ export class WordWhackScene extends Phaser.Scene {
     private retreatMole(mole: MoleData): void {
         if (mole.retreating) return;
         mole.retreating = true;
-
-        this.tweens.add({
-            targets: mole.sprite,
-            y: mole.sprite.y + tuning.holeRadius,
-            duration: tuning.moleRetreatDurationMs,
-            ease: 'Power2',
-            onUpdate: () => mole.label.setPosition(mole.sprite.x, mole.sprite.y),
-            onComplete: () => {
-                mole.label.destroy();
+        mole.label.destroy();
+        mole.sprite.setScale(tuning.wormReactionScale);
+        mole.sprite.play('worm-missed');
+        mole.sprite.once('animationcomplete-worm-missed', () => {
+            if (mole.sprite.active) {
                 mole.sprite.destroy();
                 this.activeMoles = this.activeMoles.filter((m) => m !== mole);
-            },
+            }
         });
     }
 
