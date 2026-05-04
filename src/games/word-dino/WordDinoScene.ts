@@ -251,14 +251,17 @@ export class WordDinoScene extends Phaser.Scene {
             tuning.minSpawnIntervalMs,
             this.currentSpawnIntervalMs * (1 - tuning.spawnIntervalRampFracPerCorrect)
         );
-        if (this.spawnTimer) {
-            this.spawnTimer.remove(false);
-            this.spawnTimer = this.time.addEvent({
-                delay: this.currentSpawnIntervalMs,
-                loop: true,
-                callback: () => this.trySpawnNext(),
-            });
-        }
+        // No timer reschedule needed — next gap is recomputed in scheduleNextSpawn().
+    }
+
+    private scheduleNextSpawn(): void {
+        if (!this.roundActive) return;
+        const frac = tuning.minSpawnGapFrac + Math.random() * (tuning.maxSpawnGapFrac - tuning.minSpawnGapFrac);
+        const delay = this.currentSpawnIntervalMs * frac;
+        this.spawnTimer = this.time.delayedCall(delay, () => {
+            this.trySpawnNext();
+            this.scheduleNextSpawn();
+        });
     }
 
     private startRound(): void {
@@ -274,14 +277,9 @@ export class WordDinoScene extends Phaser.Scene {
         this.refillQueue();
         this.roundActive = true;
 
-        this.spawnTimer = this.time.addEvent({
-            delay: this.currentSpawnIntervalMs,
-            loop: true,
-            callback: () => this.trySpawnNext(),
-        });
-
         // Spawn one immediately so first obstacle isn't delayed by full interval
         this.trySpawnNext();
+        this.scheduleNextSpawn();
     }
 
     private refillQueue(): void {

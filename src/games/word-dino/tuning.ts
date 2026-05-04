@@ -28,6 +28,8 @@ export const tuning = {
     baseSpawnIntervalMs: 1400,
     minSpawnIntervalMs: 600,
     spawnIntervalRampFracPerCorrect: 0.05, // -5% per correct
+    minSpawnGapFrac: 0.7,                  // randomized gap = currentInterval × [min, max]
+    maxSpawnGapFrac: 1.4,
 
     // Jump physics (in pixels and pixels/sec/sec)
     jumpVelocityPx: 600,                // initial upward velocity (negative y)

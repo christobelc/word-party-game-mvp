@@ -89,6 +89,22 @@ export function LobbyScreen(): React.ReactElement {
             >
                 {landed ? `🎉 ${currentGame.meta.name}!` : spinning ? 'Spinning…' : 'PULL'}
             </button>
+
+            <div className="mt-6">
+                <p className="text-xs text-gray-500 text-center mb-2">Skip to game (testing)</p>
+                <div className="flex gap-2 flex-wrap justify-center">
+                    {games.map((g) => (
+                        <button
+                            key={g.meta.id}
+                            onClick={() => navigate(`/play?decks=${decksParam}&game=${g.meta.id}`)}
+                            disabled={spinning || landed !== null}
+                            className="bg-gray-200 text-gray-800 py-2 px-3 rounded text-sm hover:bg-gray-300 disabled:opacity-50"
+                        >
+                            {g.meta.name}
+                        </button>
+                    ))}
+                </div>
+            </div>
         </div>
     );
 }
