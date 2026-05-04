@@ -15,8 +15,8 @@ export const tuning = {
     fruitSpawnYOffsetPx: 40,               // how far below the bottom edge fruits start
 
     // Trajectory physics
-    fruitInitialVyPx: 800,                 // upward initial velocity (px/sec; applied as negative)
-    fruitMaxHorizVyPx: 100,                // max horizontal velocity (px/sec, randomized ± this value)
+    fruitInitialVyPx: 1100,                 // upward initial velocity (px/sec; applied as negative)
+    fruitMaxHorizVyPx: 120,                // max horizontal velocity (px/sec, randomized ± this value)
     gravityPxPerSecSquared: 1500,
 
     // Round
@@ -25,9 +25,15 @@ export const tuning = {
     wordFruitSpawnIntervalMs: 1500,        // gap between fruit launches in a round
     interRoundMs: 700,
 
+    // Bonus fruits — no text, free to slash, purely for tactile feel
+    bonusFruitRadiusPx: 22,                   // smaller than word-fruit (36)
+    bonusFruitColors: [0x3b82f6, 0x14b8a6, 0xec4899, 0x84cc16, 0x06b6d4],  // blues / teals / pink / lime / cyan — distinct from word-fruit palette
+    bonusSpawnMinIntervalMs: 350,             // shortest gap between bonus spawns
+    bonusSpawnMaxIntervalMs: 800,             // longest gap between bonus spawns
+
     // Speed ramp
     speedRampFracPerCorrect: 0.05,
-    maxFruitInitialVyPx: 1100,             // upper bound for ramped initial vy
+    maxFruitInitialVyPx: 1400,             // upper bound for ramped initial vy
     minSpawnIntervalMs: 800,               // floor for ramped spawn interval
 
     // Slash detection

@@ -7,9 +7,9 @@ import { tuning } from './tuning';
 
 interface FruitData {
     circle: Phaser.GameObjects.Arc;
-    label: WordLabelHandle;
-    wordId: string;
-    isCorrect: boolean;
+    label: WordLabelHandle | null;     // null for bonus fruits (no text)
+    wordId: string | null;             // null for bonus fruits
+    kind: 'correct' | 'wrong' | 'bonus';
     x: number;
     y: number;
     vx: number;
@@ -27,6 +27,7 @@ export class WordNinjaScene extends Phaser.Scene {
 
     private fruits: FruitData[] = [];
     private spawnTimers: Phaser.Time.TimerEvent[] = [];
+    private bonusSpawnTimer: Phaser.Time.TimerEvent | null = null;
     private roundActive: boolean = false;
 
     private currentInitialVyPx: number = tuning.fruitInitialVyPx;
@@ -126,12 +127,16 @@ export class WordNinjaScene extends Phaser.Scene {
         // 10. Register shutdown
         this.events.once('shutdown', () => {
             this.fruits.forEach((f) => {
-                f.label.destroy();
+            if (f.label) f.label.destroy();
                 f.circle.destroy();
             });
             this.fruits = [];
             this.spawnTimers.forEach((t) => t.remove(false));
             this.spawnTimers = [];
+            if (this.bonusSpawnTimer) {
+                this.bonusSpawnTimer.remove(false);
+                this.bonusSpawnTimer = null;
+            }
             if (this.timerUpdater) {
                 this.timerUpdater.remove(false);
                 this.timerUpdater = null;
@@ -152,17 +157,17 @@ export class WordNinjaScene extends Phaser.Scene {
             f.x += f.vx * dt;
             f.y += f.vy * dt;
             f.circle.setPosition(f.x, f.y);
-            f.label.setPosition(f.x, f.y);
+            if (f.label) f.label.setPosition(f.x, f.y);
 
             // Off-screen check
             const offBottom = f.y > tuning.canvasHeight + 2 * tuning.fruitRadiusPx;
             const offSide = f.x < -tuning.fruitRadiusPx || f.x > tuning.canvasWidth + tuning.fruitRadiusPx;
             if (offBottom || offSide) {
-                const wasCorrect = f.isCorrect && !f.slashed;
-                f.label.destroy();
+                const wasMissedCorrect = f.kind === 'correct' && !f.slashed;
+                if (f.label) f.label.destroy();
                 f.circle.destroy();
                 this.fruits.splice(i, 1);
-                if (wasCorrect && this.roundActive) {
+                if (wasMissedCorrect && this.roundActive && f.wordId) {
                     this.context.session.recordWrong(f.wordId);
                     this.endRound();
                 }
@@ -224,12 +229,21 @@ export class WordNinjaScene extends Phaser.Scene {
     }
 
     private handleFruitSlashed(f: FruitData): void {
-        if (f.isCorrect) {
+        if (f.kind === 'bonus') {
+            // Pure tactile slash — no record, no end round.
+            feedbackTweens.squashStretch(this, f.circle as unknown as Phaser.GameObjects.Sprite);
+            if (f.label) f.label.destroy();
+            f.circle.destroy();
+            this.fruits = this.fruits.filter((x) => x !== f);
+            return;
+        }
+
+        if (f.kind === 'correct' && f.wordId) {
             this.context.session.recordCorrect(f.wordId);
             this.spawnFloatingText(f.x, f.y, '+1');
             feedbackTweens.squashStretch(this, f.circle as unknown as Phaser.GameObjects.Sprite);
             this.applySpeedRamp();
-        } else {
+        } else if (f.kind === 'wrong' && f.wordId) {
             this.context.session.recordWrong(f.wordId);
             feedbackTweens.shake(this);
         }
@@ -279,13 +293,27 @@ export class WordNinjaScene extends Phaser.Scene {
             const entry = lineup[i];
             const timer = this.time.delayedCall(delay, () => {
                 if (!this.roundActive) return;
-                this.spawnFruit(entry.word, entry.isCorrect);
+                this.spawnWordFruit(entry.word, entry.isCorrect);
             });
             this.spawnTimers.push(timer);
         }
+
+        // Start the bonus-fruit stream.
+        this.scheduleNextBonusSpawn();
     }
 
-    private spawnFruit(word: WordPair, isCorrect: boolean): void {
+    private scheduleNextBonusSpawn(): void {
+        if (!this.roundActive) return;
+        const delay = tuning.bonusSpawnMinIntervalMs +
+            Math.random() * (tuning.bonusSpawnMaxIntervalMs - tuning.bonusSpawnMinIntervalMs);
+        this.bonusSpawnTimer = this.time.delayedCall(delay, () => {
+            if (!this.roundActive) return;
+            this.spawnBonusFruit();
+            this.scheduleNextBonusSpawn();
+        });
+    }
+
+    private spawnWordFruit(word: WordPair, isCorrect: boolean): void {
         const x = tuning.spawnXMarginPx + Math.random() * (tuning.canvasWidth - 2 * tuning.spawnXMarginPx);
         const y = tuning.canvasHeight + tuning.fruitSpawnYOffsetPx;
         const vy = -this.currentInitialVyPx;
@@ -301,7 +329,28 @@ export class WordNinjaScene extends Phaser.Scene {
             circle,
             label,
             wordId: word.id,
-            isCorrect,
+            kind: isCorrect ? 'correct' : 'wrong',
+            x, y, vx, vy,
+            slashed: false,
+        });
+    }
+
+    private spawnBonusFruit(): void {
+        const x = tuning.spawnXMarginPx + Math.random() * (tuning.canvasWidth - 2 * tuning.spawnXMarginPx);
+        const y = tuning.canvasHeight + tuning.fruitSpawnYOffsetPx;
+        const vy = -this.currentInitialVyPx;
+        const vx = (Math.random() * 2 - 1) * tuning.fruitMaxHorizVyPx;
+
+        const colorIdx = Math.floor(Math.random() * tuning.bonusFruitColors.length);
+        const color = tuning.bonusFruitColors[colorIdx];
+
+        const circle = this.add.circle(x, y, tuning.bonusFruitRadiusPx, color);
+
+        this.fruits.push({
+            circle,
+            label: null,
+            wordId: null,
+            kind: 'bonus',
             x, y, vx, vy,
             slashed: false,
         });
@@ -315,9 +364,15 @@ export class WordNinjaScene extends Phaser.Scene {
         this.spawnTimers.forEach((t) => t.remove(false));
         this.spawnTimers = [];
 
+        // Stop bonus stream
+        if (this.bonusSpawnTimer) {
+            this.bonusSpawnTimer.remove(false);
+            this.bonusSpawnTimer = null;
+        }
+
         // Despawn all fruits
         this.fruits.forEach((f) => {
-            f.label.destroy();
+            if (f.label) f.label.destroy();
             f.circle.destroy();
         });
         this.fruits = [];
