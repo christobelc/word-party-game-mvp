@@ -18,5 +18,14 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      'no-restricted-globals': ['error', 'localStorage'],
+    },
+  },
+  {
+    files: ['src/core/deck/LocalDeckService.ts'],
+    rules: {
+      'no-restricted-globals': 'off',
+    },
   },
 ])
